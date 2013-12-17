@@ -56,6 +56,7 @@ var (
 	ErrNotWebSocket         = &ProtocolError{"not websocket protocol"}
 	ErrBadRequestMethod     = &ProtocolError{"bad method"}
 	ErrNotSupported         = &ProtocolError{"not supported"}
+	ErrFrameSizeLimit       = &ProtocolError{"frame size limit exceeded"}
 )
 
 // Addr is an implementation of net.Addr for WebSocket.
@@ -87,6 +88,12 @@ type Config struct {
 	Header http.Header
 
 	handshakeData map[string]string
+
+	// Frame size limit in bytes
+	FrameSizeLimit int64
+
+	// Return error with extended description instead of ErrBadStatus
+	ExtendedError bool
 }
 
 // serverHandshaker is an interface to handle WebSocket server side handshake.
@@ -124,7 +131,7 @@ type frameReader interface {
 
 // frameReaderFactory is an interface to creates new frame reader.
 type frameReaderFactory interface {
-	NewFrameReader() (r frameReader, err error)
+	NewFrameReader(frameSizeLimit int64) (r frameReader, err error)
 }
 
 // frameWriter is an interface to write a WebSocket frame.
@@ -173,7 +180,7 @@ func (ws *Conn) Read(msg []byte) (n int, err error) {
 	defer ws.rio.Unlock()
 again:
 	if ws.frameReader == nil {
-		frame, err := ws.frameReaderFactory.NewFrameReader()
+		frame, err := ws.frameReaderFactory.NewFrameReader(ws.config.FrameSizeLimit)
 		if err != nil {
 			return 0, err
 		}
@@ -311,7 +318,7 @@ func (cd Codec) Receive(ws *Conn, v interface{}) (err error) {
 		ws.frameReader = nil
 	}
 again:
-	frame, err := ws.frameReaderFactory.NewFrameReader()
+	frame, err := ws.frameReaderFactory.NewFrameReader(ws.config.FrameSizeLimit)
 	if err != nil {
 		return err
 	}

@@ -117,7 +117,7 @@ type hybiFrameReaderFactory struct {
 // NewFrameReader reads a frame header from the connection, and creates new reader for the frame.
 // See Section 5.2 Base Framing protocol for detail.
 // http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-17#section-5.2
-func (buf hybiFrameReaderFactory) NewFrameReader() (frame frameReader, err error) {
+func (buf hybiFrameReaderFactory) NewFrameReader(frameSizeLimit int64) (frame frameReader, err error) {
 	hybiFrame := new(hybiFrameReader)
 	frame = hybiFrame
 	var header []byte
@@ -159,6 +159,10 @@ func (buf hybiFrameReaderFactory) NewFrameReader() (frame frameReader, err error
 		}
 		header = append(header, b)
 		hybiFrame.header.Length = hybiFrame.header.Length*256 + int64(b)
+	}
+	if frameSizeLimit != 0 && hybiFrame.header.Length > frameSizeLimit {
+		err = ErrFrameSizeLimit
+		return
 	}
 	if mask {
 		// Masking key. 4 bytes.
@@ -423,7 +427,11 @@ func hybiClientHandshake(config *Config, br *bufio.Reader, bw *bufio.Writer) (er
 		return err
 	}
 	if resp.StatusCode != 101 {
-		return ErrBadStatus
+		if config.ExtendedError {
+			return &ProtocolError{ErrBadStatus.Error() + ": " + resp.Status}
+		} else {
+			return ErrBadStatus
+		}
 	}
 	if strings.ToLower(resp.Header.Get("Upgrade")) != "websocket" ||
 		strings.ToLower(resp.Header.Get("Connection")) != "upgrade" {

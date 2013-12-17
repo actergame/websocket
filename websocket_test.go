@@ -198,7 +198,7 @@ func TestWithQuery(t *testing.T) {
 	ws.Close()
 }
 
-func testWithProtocol(t *testing.T, subproto []string) (string, error) {
+func testWithProtocol(t *testing.T, subproto []string, extendedError bool) (string, error) {
 	once.Do(startServer)
 
 	client, err := net.Dial("tcp", serverAddr)
@@ -208,6 +208,7 @@ func testWithProtocol(t *testing.T, subproto []string) (string, error) {
 
 	config := newConfig(t, "/subproto")
 	config.Protocol = subproto
+	config.ExtendedError = extendedError
 
 	ws, err := NewClient(config, client)
 	if err != nil {
@@ -223,7 +224,7 @@ func testWithProtocol(t *testing.T, subproto []string) (string, error) {
 }
 
 func TestWithProtocol(t *testing.T) {
-	proto, err := testWithProtocol(t, []string{"chat"})
+	proto, err := testWithProtocol(t, []string{"chat"}, false)
 	if err != nil {
 		t.Errorf("SubProto: unexpected error: %v", err)
 	}
@@ -233,7 +234,7 @@ func TestWithProtocol(t *testing.T) {
 }
 
 func TestWithTwoProtocol(t *testing.T) {
-	proto, err := testWithProtocol(t, []string{"test", "chat"})
+	proto, err := testWithProtocol(t, []string{"test", "chat"}, false)
 	if err != nil {
 		t.Errorf("SubProto: unexpected error: %v", err)
 	}
@@ -243,9 +244,17 @@ func TestWithTwoProtocol(t *testing.T) {
 }
 
 func TestWithBadProtocol(t *testing.T) {
-	_, err := testWithProtocol(t, []string{"test"})
+	_, err := testWithProtocol(t, []string{"test"}, false)
 	if err != ErrBadStatus {
 		t.Errorf("SubProto: expected %v, got %v", ErrBadStatus, err)
+	}
+}
+
+func TestWithBadProtocolAndExtendedError(t *testing.T) {
+	_, err := testWithProtocol(t, []string{"test"}, true)
+	expected := "bad status: 403 Forbidden"
+	if err.Error() != expected {
+		t.Errorf("SubProto: expected %v, got %v", expected, err)
 	}
 }
 

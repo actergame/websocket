@@ -295,7 +295,7 @@ func testHybiFrame(t *testing.T, testHeader, testPayload, testMaskedPayload []by
 		t.Errorf("frame expected %q got %q", expectedFrame, b.Bytes())
 	}
 	frameReaderFactory := &hybiFrameReaderFactory{bufio.NewReader(b)}
-	r, err := frameReaderFactory.NewFrameReader()
+	r, err := frameReaderFactory.NewFrameReader(0)
 	if err != nil {
 		t.Errorf("Read error %q", err)
 	}
@@ -385,6 +385,41 @@ func TestHybiLongFrame(t *testing.T) {
 
 	payload = make([]byte, 65536)
 	testHybiFrame(t, []byte{0x81, 127, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00}, payload, payload, frameHeader)
+}
+
+func testHybiOversizedFrame(t *testing.T, testHeader, testPayload, testMaskedPayload []byte, frameHeader *hybiFrameHeader,
+	frameSizeLimit int64, expected error) {
+	b := bytes.NewBuffer([]byte{})
+	frameWriterFactory := &hybiFrameWriterFactory{bufio.NewWriter(b), false}
+	w, _ := frameWriterFactory.NewFrameWriter(TextFrame)
+	w.(*hybiFrameWriter).header = frameHeader
+	_, err := w.Write(testPayload)
+	w.Close()
+	if err != nil {
+		t.Errorf("Write error %q", err)
+	}
+	var expectedFrame []byte
+	expectedFrame = append(expectedFrame, testHeader...)
+	expectedFrame = append(expectedFrame, testMaskedPayload...)
+	if !bytes.Equal(expectedFrame, b.Bytes()) {
+		t.Errorf("frame expected %q got %q", expectedFrame, b.Bytes())
+	}
+	frameReaderFactory := &hybiFrameReaderFactory{bufio.NewReader(b)}
+	_, err = frameReaderFactory.NewFrameReader(frameSizeLimit)
+	if err != expected {
+		t.Errorf("testHybiOversizedFrame: expected %v, got %v", expected, err)
+	}
+}
+
+func TestHybiOverLimitFrame(t *testing.T) {
+	frameHeader := &hybiFrameHeader{Fin: true, OpCode: TextFrame}
+	payload := make([]byte, 126)
+	testHybiOversizedFrame(t, []byte{0x81, 126, 0x00, 126}, payload, payload, frameHeader, 125, ErrFrameSizeLimit)
+	testHybiOversizedFrame(t, []byte{0x81, 126, 0x00, 126}, payload, payload, frameHeader, 126, nil)
+
+	payload = make([]byte, 65535)
+	testHybiOversizedFrame(t, []byte{0x81, 126, 0xff, 0xff}, payload, payload, frameHeader, 65534, ErrFrameSizeLimit)
+	testHybiOversizedFrame(t, []byte{0x81, 126, 0xff, 0xff}, payload, payload, frameHeader, 65535, nil)
 }
 
 func TestHybiClientRead(t *testing.T) {
